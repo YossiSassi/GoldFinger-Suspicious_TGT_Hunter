@@ -1,4 +1,4 @@
-<h1><span style="color: #2b2301;">GoldFinger - Suspicious TGT Detection for </span><span style="color: #008080;">h</span><span style="color: #2b2301;">Ac</span><span style="color: #008080;">K</span><span style="color: #2b2301;">tive Directory</span></h1>
+<h1><span style="color: #2b2301;">GoldFinger - Suspicious Kerberos TGT Detection for </span><span style="color: #008080;">h</span><span style="color: #2b2301;">Ac</span><span style="color: #008080;">K</span><span style="color: #2b2301;">tive Directory</span></h1>
 <hr />
 <h2 style="color: #2e6c80;">Description</h2>
 GoldFinger is a Suspicious TGT detector - focusing on <strong>Golden Tickets & potential Pass-The-Hash attempts.<BR>
@@ -98,5 +98,5 @@ Collector script section heavily based on work by Jared Atkinson (@jaredcatkinso
 <p><strong>Comments and suggestions are <a href="mailto:yossis@protonmail.com" target="_blank"><span style="color: #333333;">welcome</span></a></strong></p>
 <hr />
 <h2 style="color: #2e6c80;">Other useful resources</h2>
-<p><strong><a title="HacktiveDirectory.com" href="https://www.hacktivedirectory.com" target="_blank" rel="noopener">hacktivedirectory.com</a> - </strong>Useful forensic tools for AD Security</p>
+<p><strong><a title="HacktiveDirectory.com" href="https://www.hacktivedirectory.com" target="_blank">hacktivedirectory.com</a> - </strong>Useful forensic tools for AD Security</p>
 <p>&nbsp;</p>
