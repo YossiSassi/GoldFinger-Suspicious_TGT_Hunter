@@ -114,6 +114,7 @@ Runs the tool using WinRM on workstations only (Client OS), while excluding/skip
 
 .NOTES
 Author: Yossi Sassi (@yossi_sassi), 10Root Cyber Security
+Many Thanks to Santiago Squarzon (santysq) for this Test-TCPConnectionAsync function (added v1.0.1), and to Jared Atkinson (@jaredcatkinson) & Matthew Graeber (@mattifestation) for their work on kerberos tickets enumeration (modified for use in GoldFinger-EndPointTicketCollector.ps1)
 
 License: 
 Ten Root Cyber Security Ltd. End-User License Agreement 
@@ -140,10 +141,18 @@ For the avoidance of doubt, Ten Root Cyber Security is not responsible for any c
 www.hacktivedirectory.com
 #>
 
+# declarations for Test-TCPConnectionAsync function
+using namespace System.Diagnostics
+using namespace System.Collections.Generic
+using namespace System.Collections.Specialized
+using namespace System.Net.Sockets
+using namespace System.Threading.Tasks
+
 [cmdletbinding()]
 param (
     [ValidateSet('SMB','WinRM')]
     [string]$CollectionMethod = "WinRM",
+    [ValidateRange(5, 1800)]
     [int]$SMBTimeOut = 30,
     [switch]$WorkstationsOnly = $false,    
     [switch]$IncludeComputerTGT = $false,
@@ -160,12 +169,70 @@ param (
     [string]$LogName = [System.String]::Empty
 )
 
+# helper functions
 function Log-Entry {
     param (
         [string]$Message
     )
     $global:sw.writeline($Message);
     $global:sw.flush();
+}
+
+function Test-TCPConnectionAsync {
+    [cmdletbinding()]
+    param(
+        [parameter(Mandatory, Valuefrompipeline)]
+        [string[]] $Target,
+
+        [parameter(Mandatory, Position = 1)]
+        [ValidateRange(1, 65535)]
+        [int[]] $Port,
+
+        [parameter(Position = 2)]
+        [ValidateRange(500, [int]::MaxValue)]
+        [int] $TimeOut = 1200
+    )
+
+    begin {
+        $timer = [Stopwatch]::StartNew()
+        $tasks = [List[OrderedDictionary]]::new()
+    }
+    process {
+        foreach($t in $Target) {
+            foreach($i in $Port) {
+                $tcp = [TCPClient]::new()
+                $tasks.Add([ordered]@{
+                    Instance = $tcp
+                    Task     = $tcp.ConnectAsync($t, $i)
+                    Output   = [ordered]@{
+                        Source       = $env:COMPUTERNAME
+                        Destionation = $t
+                        Port         = $i
+                    }
+                })
+            }
+        }
+    }
+    end {
+        do {
+            $id = [Task]::WaitAny($tasks.Task, 200)
+            if($id -eq -1) {
+                continue
+            }
+            $instance, $task, $output = $tasks[$id][$tasks[$id].PSBase.Keys]
+            $output['Success'] = $task.Status -eq [TaskStatus]::RanToCompletion
+            $instance.ForEach('Dispose') # Avoid any throws here
+            $tasks.RemoveAt($id)
+            [pscustomobject] $output
+        } while($tasks -and $timer.ElapsedMilliseconds -le $timeout)
+
+        foreach($t in $tasks) {
+            $instance, $task, $output = $t[$t.PSBase.Keys]
+            $output['Success'] = $task.Status -eq [TaskStatus]::RanToCompletion
+            $instance.ForEach('Dispose') # Avoid any throws here
+            [pscustomobject] $output
+        }
+    }
 }
 
 # Check logging level specified, and if logname specified
@@ -175,7 +242,7 @@ if ($LoggingLevel -eq 'Full' -and $LogName -eq [System.String]::Empty)
     }
     
 # Set version
-$version = "1.0";
+$version = "1.0.1";
     
 # Set location of collector script
 if ($ScriptFolder -eq [string]::Empty)
@@ -368,7 +435,8 @@ Switch ($ComputerName)
             # Perform port ping to WinRM default port
                 $PortPingResults = $AllComputersFiltered | foreach {
                 Write-Progress -Activity "Verifying connectivity..." -status "host $i of $HostCount" -percentComplete ($i / $HostCount*100);
-                $Computer=$_;"$Computer,$((New-Object System.Net.Sockets.TcpClient).ConnectAsync($Computer,$Port).Wait(500))"
+                $Computer=$_;"$Computer,$((Test-TCPConnectionAsync -Target $Computer -Port $Port).Success)"
+                #$Computer=$_;"$Computer,$((New-Object System.Net.Sockets.TcpClient).ConnectAsync($Computer,$Port).Wait(500))"
                 $i++
             }
 
@@ -466,7 +534,8 @@ Switch ($ComputerName)
             $PortPingResults = $AllComputersFiltered | foreach {
                     Write-Progress -Activity "Verifying connectivity..." -status "host $i of $HostCount" -percentComplete ($i / $HostCount*100);
                     $Computer=$_;
-                    $PingResult = (New-Object System.Net.Sockets.TcpClient).ConnectAsync($Computer,$Port).Wait(500);
+                    $PingResult = $(Test-TCPConnectionAsync -Target $Computer -Port $Port).Success
+                    #$PingResult = (New-Object System.Net.Sockets.TcpClient).ConnectAsync($Computer,$Port).Wait(500);
                     $PortPingResultsArray += "$Computer,$PingResult";
                     $PingResult;
                     $i++
