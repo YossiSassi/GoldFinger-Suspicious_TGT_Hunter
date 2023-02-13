@@ -7,13 +7,13 @@ It is essentially built from a TGT Collector - collecting all Authentication Tic
 It has two collection methods - Either WinRM (default), or SMB (using PaExec, via the admin$ share). WinRM has an option to Enable WinRM remotely, as a separate parameter.<BR>
 Before running the tool, make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run this Script with or without relevant parameters.
 Requirements: The script needs to run as a user that has Local Admin permissions on all targetted EndPoints.
-<BR><strong>It is also HIGHLY recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines settings on the EndPoints *BEFORE* running the main script</strong>, to allow smoother operations & avoid false detections as 'malicious'/HackTool.
+<BR><B>It is HIGHLY recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines on EndPoints *BEFORE* running the main script, to allow smoother operations & avoid false detections as 'malicious'/HackTool.<BR>Common blocking of the tool would be a detection on the EndPoint of 'PowerView!ams!'. You'll need to add the exclusion of the script.</B>
 <h2 style="color: #2e6c80;">Short description</h2>
 Purpose: TGT collector|analyzer|hunting for indicators of potential Golden Tickets & Pass-The-Hash on EndPoints in the domain (research in progress).
 <BR>Requirements: Need to have either WinRM enabled and running on EndPoints (has an option to Enable WinRM remotely for you), or SMB access (using PaExec, via admin$ share)
 <BR>Instructions: Make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run .\GoldFinger-Main.ps1 Script.
 <BR>NOTE1: Run the script with a user that has Local Admin permissions on all targetted EndPoints.
-<BR>NOTE2: It is recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines on EndPoints *BEFORE* running the main script, to allow smoother operations & avoid false detections as 'malicious'/HackTool.
+<BR>NOTE2: <strong>It is also HIGHLY recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines settings on the EndPoints *BEFORE* running the main script</strong>, to allow smoother operations & avoid false detections as 'malicious'/HackTool.
 <h2 style="color: #2e6c80;">Parameters</h2>
 .PARAMETER CollectionMethod<BR>
 The protocol/service used to collect the tickets from the domain-joined endpoint. Default is WinRM (PSRemoting).<BR>
