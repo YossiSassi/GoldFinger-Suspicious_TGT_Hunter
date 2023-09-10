@@ -4,7 +4,7 @@ Requirements: Need to have either WinRM enabled and running on EndPoints (has an
 Instructions: Make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run this Script.
 NOTE1: Run the script with a user that has Local Admin permissions on all targetted EndPoints.
 NOTE2: It is recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines on EndPoints *BEFORE* running the main script, to allow smoother operations & avoid false detections as 'malicious'/HackTool.
-Comments: yossis@protonmail.com
+Comments welcome to -> yossis@protonmail.com
 #>
 
 <#
@@ -14,6 +14,7 @@ It has two collection methods - WinRM (default), or SMB (using PaExec, via the a
 Before running the tool, make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run this Script with or without relevant parameters.
 Needs to run as a user that has Local Admin permissions on all targetted EndPoints.
 It is also HIGHLY recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines settings on the EndPoints *BEFORE* running the main script, to allow smoother operations & avoid false detections as 'malicious'/HackTool.
+You can also run the the EndPointTicketCollector script locally on a system, redirect its output to a text file, and separately analyze the output later using the main script.
 
 .DESCRIPTION
 GoldFinger is a Suspicious TGT detector - focusing on Golden Tickets & potential Pass-The-Hash attempts.
@@ -23,6 +24,7 @@ It has two collection methods - Either WinRM (default), or SMB (using PaExec, vi
 Before running the tool, make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run this Script with or without relevant parameters.
 Requirements: The script needs to run as a user that has Local Admin permissions on all targetted EndPoints.
 It is also HIGHLY recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines settings on the EndPoints *BEFORE* running the main script, to allow smoother operations & avoid false detections as 'malicious'/HackTool.
+You can also run the GoldFinger-EndPointTicketCollector.ps1 script locally on a system, redirect its output to a text file, and separately analyze the output using this script, using -TextFileToAnalyze option, providing the full path to a text file containing re-directed output from the EndPoint-Collector script.
 
 .PARAMETER CollectionMethod
 The protocol/service used to collect the tickets from the domain-joined endpoint. Default is WinRM (PSRemoting).
@@ -68,6 +70,9 @@ The value 'Full' is useful mainly for SMB collection method, for detailed/verbos
 The file name and location of the logging file, e.g. "c:\temp\GoldFinger.log".
 By default, if LoggingLevel=Full was specified, the log file is kept in the current folder, named as "GoldFinger_LOG_ddMMyyyyHHmmss.log" 
 
+.PARAMETER TextFileToAnalyze
+The full path to a text file containing re-directed output from the EndPointCollector script.
+
 .EXAMPLE
 .\GoldFinger-Main.ps1
 
@@ -111,6 +116,10 @@ Runs the tool using WinRM on workstations only (Client OS), while excluding/skip
 .EXAMPLE
 .\GoldFinger-Main.ps1 -WorkstationsOnly -ExcludedComputerName $ExcludedComputers
 Runs the tool using WinRM on workstations only (Client OS), while excluding/skipping a specific list of hosts, previously saved into a variable named $ExcludedComputers
+
+.EXAMPLE
+.\GoldFinger-Main.ps1 -TextFileToAnalyze c:\temp\tickets.txt
+Analyzes the input text file containing re-directed result from the EndPoint-Collector script.
 
 .NOTES
 Author: Yossi Sassi (@yossi_sassi), 10Root Cyber Security
@@ -166,7 +175,8 @@ param (
     [string[]]$ExcludedComputerName = [System.String]::Empty,
     [ValidateSet('FailedJobsOnly','Full')]
     [string]$LoggingLevel = 'FailedJobsOnly',
-    [string]$LogName = [System.String]::Empty
+    [string]$LogName = [System.String]::Empty,
+    [string]$TextFileToAnalyze = [System.String]::Empty
 )
 
 # helper functions
@@ -242,7 +252,7 @@ if ($LoggingLevel -eq 'Full' -and $LogName -eq [System.String]::Empty)
     }
     
 # Set version
-$version = "1.0.1";
+$version = "1.0.2";
     
 # Set location of collector script
 if ($ScriptFolder -eq [string]::Empty)
@@ -271,8 +281,273 @@ $Logo = @"
 
 $Logo
 
+## Get Kerberos TGT Ticket Age, and Ticket Renewal Age (requires live connection to a Domain Controller)
+[int]$MaxTicketAge = (Get-Content "\\$($ENV:USERDNSDOMAIN)\SYSVOL\$($ENV:USERDNSDOMAIN)\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf" | Select-String MaxTicketAge).ToString().Split("=")[1].Trim()
+Write-Verbose "MaxTicketAge = $MaxTicketAge hours (taken from Default Domain Policy)"
+
+[int]$MaxRenewAge = (Get-Content "\\$($ENV:USERDNSDOMAIN)\SYSVOL\$($ENV:USERDNSDOMAIN)\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf" | Select-String MaxRenewAge).ToString().Split("=")[1].Trim()
+Write-Verbose "MaxRenewAge = $MaxRenewAge days (taken from Default Domain Policy)"
+
+## offline analysis
+# First, check if offline analysis of a dumped text file was specified
+if ($TextFileToAnalyze -ne [System.String]::Empty)
+    {
+        Write-Host "[*] Offline analysis specified (using input file $TextFileToAnalyze)" -ForegroundColor Green;
+
+        if (Test-Path $TextFileToAnalyze) {
+        # set tickets variable
+        $Tickets = @();
+
+        # Get data and parse it
+        $TicketDumpData = Get-Content $TextFileToAnalyze;
+
+        $ServiceName = $TicketDumpData | Select-String 'ServiceName                  :' | ForEach-Object { $_.ToString().Replace('ServiceName                  :','').Trim()}
+        $ClientName = $TicketDumpData | Select-String 'ClientName                   :' | ForEach-Object { $_.ToString().Replace('ClientName                   :','').Trim()}
+        $DomainName = $TicketDumpData | Select-String 'DomainName                   :' | ForEach-Object { $_.ToString().Replace('DomainName                   :','').Trim()}
+        $TargetDomainName = $TicketDumpData | Select-String 'TargetDomainName             :' | ForEach-Object { $_.ToString().Replace('TargetDomainName             :','').Trim()}
+        $AltTargetDomainName = $TicketDumpData | Select-String 'AltTargetDomainName          :' | ForEach-Object { $_.ToString().Replace('AltTargetDomainName          :','').Trim()}
+        $SessionKeyType = $TicketDumpData | Select-String 'SessionKeyType               :' | ForEach-Object { $_.ToString().Replace('SessionKeyType               :','').Trim()}
+        $SessionKey = $TicketDumpData | Select-String 'SessionKey                   :' | ForEach-Object { $_.ToString().Replace('SessionKey                   :','').Trim()}
+        $TempTicketFlags = $TicketDumpData | Select-String 'TicketFlags                  :' -Context 1;
+        $TicketFlags = $TempTicketFlags | ForEach-Object {if ($_.Context.PostContext -like "KeyExpirationTime*") {$($_.Line.Replace('TicketFlags                  :','').Trim())} else {$("$($_.Line)$($_.Context.PostContext.Trim())").Replace('TicketFlags                  :','').Trim()}}
+        $KeyExpirationTime = $TicketDumpData | Select-String 'KeyExpirationTime            :' | ForEach-Object { $_.ToString().Replace('KeyExpirationTime            :','').Trim()}
+        $StartTime = $TicketDumpData | Select-String 'StartTime                    :' | ForEach-Object { $_.ToString().Replace('StartTime                    :','').Trim()}
+        $EndTime = $TicketDumpData | Select-String 'EndTime                      :' | ForEach-Object { $_.ToString().Replace('EndTime                      :','').Trim()}
+        $RenewUntil = $TicketDumpData | Select-String 'RenewUntil                   :' | ForEach-Object { $_.ToString().Replace('RenewUntil                   :','').Trim()}
+        $TimeSkew = $TicketDumpData | Select-String 'TimeSkew                     :' | ForEach-Object { $_.ToString().Replace('TimeSkew                     :','').Trim()}
+        $EncodedTicketSize = $TicketDumpData | Select-String 'EncodedTicketSize            :' | ForEach-Object { $_.ToString().Replace('EncodedTicketSize            :','').Trim()}
+        $EncodedTicket = $TicketDumpData | Select-String 'EncodedTicket                :' | ForEach-Object { $_.ToString().Replace('EncodedTicket                :','').Trim()}
+        $TimeDiffInHours = $TicketDumpData | Select-String 'TimeDiffInHours              :' | ForEach-Object { $_.ToString().Replace('TimeDiffInHours              :','').Trim()}
+        $SessionLogonId = $TicketDumpData | Select-String 'SessionLogonId               :' | ForEach-Object { $_.ToString().Replace('SessionLogonId               :','').Trim()}
+        $SessionLogonIdString = $TicketDumpData | Select-String 'SessionLogonIdString         :' | ForEach-Object { $_.ToString().Replace('SessionLogonIdString         :','').Trim()}
+        $SessionUserName = $TicketDumpData | Select-String 'SessionUserName              :' | ForEach-Object { $_.ToString().Replace('SessionUserName              :','').Trim()}
+        $SessionUserPrincipalName = $TicketDumpData | Select-String 'SessionUserPrincipalName     :' | ForEach-Object { $_.ToString().Replace('SessionUserPrincipalName     :','').Trim()}
+        $SessionLogonType = $TicketDumpData | Select-String 'SessionLogonType             :' | ForEach-Object { $_.ToString().Replace('SessionLogonType             :','').Trim()}
+        $SessionAuthenticationPackage = $TicketDumpData | Select-String 'SessionAuthenticationPackage :' | ForEach-Object { $_.ToString().Replace('SessionAuthenticationPackage :','').Trim()}
+        $SessionLogonServer = $TicketDumpData | Select-String 'SessionLogonServer           :' | ForEach-Object { $_.ToString().Replace('SessionLogonServer           :','').Trim()}
+        $SessionSid = $TicketDumpData | Select-String 'SessionSid                   :' | ForEach-Object { $_.ToString().Replace('SessionSid                   :','').Trim()}
+        $SessionID = $TicketDumpData | Select-String 'SessionID                    :' | ForEach-Object { $_.ToString().Replace('SessionID                    :','').Trim()}
+        # get the computer name from the account$'s sessionusername 
+        $ComputerName = ($SessionUserName | where {$_ -like "*$"} | select -First 1 | Out-String).replace("$","").Trim();
+
+        # Create ticket objects from parsed data
+        for ($t = 0; $t -le $($ServiceName.Count -1); $t++)
+            {
+                $Ticket = New-Object psobject;
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name ServiceName -Value $ServiceName[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name ClientName -Value $ClientName[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name DomainName -Value $DomainName[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name TargetDomainName -Value $TargetDomainName[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name AltTargetDomainName -Value $AltTargetDomainName[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionKeyType -Value $SessionKeyType[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionKey -Value $SessionKey[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name TicketFlags -Value $TicketFlags[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name KeyExpirationTime -Value $([datetime]$KeyExpirationTime[$t]) -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name StartTime -Value $([datetime]$StartTime[$t]) -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name EndTime -Value $([datetime]$EndTime[$t]) -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name RenewUntil -Value $([datetime]$RenewUntil[$t]) -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name TimeSkew -Value $([int]$TimeSkew[$t]) -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name EncodedTicketSize -Value $([int]$EncodedTicketSize[$t]) -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name EncodedTicket -Value $EncodedTicket[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name TimeDiffInHours -Value $([int]$TimeDiffInHours[$t]) -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionLogonId -Value $SessionLogonId[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionLogonIdString -Value $($SessionLogonIdString[$t]) -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionUserName -Value $($SessionUserName[$t]) -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionUserPrincipalName -Value $SessionUserPrincipalName[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionLogonType -Value $SessionLogonType[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionAuthenticationPackage -Value $SessionAuthenticationPackage[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionLogonServer -Value $SessionLogonServer[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionSid -Value $SessionSid[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name SessionID -Value $SessionID[$t] -Force
+                Add-Member -InputObject $Ticket -MemberType NoteProperty -Name ComputerName -Value $ComputerName -Force
+                $Tickets += $Ticket;
+            }
+
+        # cleanup variables
+        Clear-Variable ServiceName, ClientName, DomainName, TargetDomainName, AltTargetDomainName, SessionKey, SessionKeyType, TicketFlags, KeyExpirationTime, StartTime, EndTime, RenewUntil,TimeSkew, EncodedTicket, EncodedTicketSize, TimeDiffInHours, SessionLogonId, SessionLogonIdString, SessionUserName, SessionUserPrincipalName, SessionLogonType, SessionAuthenticationPackage, SessionLogonServer, SessionSid, SessionID, TicketDumpData
+
+    # Filter out computer account tickets, if not requested
+    if ($IncludeComputerTGT) {
+            $FilteredTickets = $Tickets;
+            Write-Host "`n[*] Total of $($FilteredTickets.Count) Ticket(s) fetched.`n" -ForegroundColor Cyan;
+            #if ($LoggingLevel -eq 'Full') {Log-Entry -Message "$(Get-date): Total of $($FilteredTickets.Count) Ticket(s) fetched"}
+        }
+        else
+        {
+            $FilteredTickets = $Tickets | where ClientName -notlike "*$"
+            Write-Host "[*] Total of $($FilteredTickets.Count) Ticket(s) fetched (excluding computer account tickets)." -ForegroundColor Cyan;
+            #if ($LoggingLevel -eq 'Full') {Log-Entry -Message "$(Get-date): Total of $($FilteredTickets.Count) Ticket(s) fetched (excluding computer account tickets)"}
+         }
+
+    # NOTE: need to combine this next part as shared function, since multiple code, for now (TBD later)
+    ## Potential Ticket Anomalies ##
+    $SuspiciousTickets = @();
+
+    # filter by KDC called is empty, and DNSHostName is different than the current computer name
+    $KDCnCompMismatch = @();
+    #$KDCnCompMismatch += $FilteredTickets | where {$_.SessionLogonServer -eq ''} -and {$_.dnsHostName.ToString().Split(".")[0] -ne $_.ComputerName}
+    
+
+    if ($KDCnCompMismatch) {
+            $KDCnCompMismatch | ForEach-Object {Add-Member -InputObject $_ -MemberType NoteProperty -Name Anomaly -Value " KDC-Empty&Computer-Mismatch " -Force}
+            $SuspiciousTickets += $KDCnCompMismatch
+        }
+
+    # filter by Ticket age (Kerberos TGT max life time, default 10 hours)
+    $TicketAgeAnomaly = @();
+    $TicketAgeAnomaly += $FilteredTickets | where {$_.TimeDiffInHours -gt $MaxTicketAge}
+
+    if ($TicketAgeAnomaly)
+        {
+            $TicketAgeAnomaly | ForEach-Object {Add-Member -InputObject $_ -MemberType NoteProperty -Name Anomaly -Value "$($_.Anomaly) | TicketAge " -Force}
+            $SuspiciousTickets += $TicketAgeAnomaly
+        }
+
+    # filter by Ticket renewal (default 7 days)
+    $Now = Get-Date;
+    $TicketRenewalAnomaly = @();
+    $TicketRenewalAnomaly += $FilteredTickets | where {([datetime]$_.RenewUntil - $Now).days -gt $MaxRenewAge}
+
+    if ($TicketRenewalAnomaly)
+        {
+            $TicketRenewalAnomaly | ForEach-Object {Add-Member -InputObject $_ -MemberType NoteProperty -Name Anomaly -Value "$($_.Anomaly) | TicketRenewalTime " -Force}
+            $SuspiciousTickets += $TicketRenewalAnomaly
+        }
+
+    # filter by client name in ticket not matching session user name (the process user/whoami) - Strong indication
+    $SessionClientMismatch = @();
+    $SessionClientMismatch += $FilteredTickets | Where {$_.ClientName -ne $_.SessionUserName}
+
+    if ($SessionClientMismatch)
+        {
+            $SessionClientMismatch | ForEach-Object {Add-Member -InputObject $_ -MemberType NoteProperty -Name Anomaly -Value "$($_.Anomaly) | !Session<>Client Mismatch! " -Force}
+            $SuspiciousTickets += $SessionClientMismatch
+        }
+
+    # filter by Session logon type == CachedInteractive (can lead to FalsePositive -> might be a runas/secondary logon on a machine - not a high-fidelity alert IF comes without any other additional anomaly!
+    $SessionLogonTypeAnomaly = @();
+    $SessionLogonTypeAnomaly += $FilteredTickets | Where {$_.SessionLogonType -eq "CachedInteractive"}
+
+    if ($SessionLogonTypeAnomaly)
+        {
+            $SessionLogonTypeAnomaly | ForEach-Object {Add-Member -InputObject $_ -MemberType NoteProperty -Name Anomaly -Value "$($_.Anomaly) | SessionLogonTypeAnomaly " -Force}
+            $SuspiciousTickets += $SessionLogonTypeAnomaly
+        }
+
+    # filter by Encoded Ticket size - normally should be over 1000, anomolous are either 972 or 976, etc'
+    $EncodedTicketSizeAnomaly = @();
+    $EncodedTicketSizeAnomaly += $FilteredTickets | Where {$([int]$_.EncodedTicketSize) -lt 1000}
+
+    if ($EncodedTicketSizeAnomaly)
+        {
+            $EncodedTicketSizeAnomaly | ForEach-Object {Add-Member -InputObject $_ -MemberType NoteProperty -Name Anomaly -Value "$($_.Anomaly) | EncodedTicketSize<1000 " -Force}
+            $SuspiciousTickets += $EncodedTicketSizeAnomaly
+        }
+
+    Write-Verbose "Total of $($SuspiciousTickets | Measure-Object | select -ExpandProperty count) tickets matched different anomaly rules (non-Unique count)";
+
+    if ($SuspiciousTickets)
+        {
+        # add Suspicious attribute to result set
+        $FilteredTickets | ForEach-Object {
+                if ($_ -in $SuspiciousTickets) {
+                        $SuspiciousTicket = $_;
+                        if ($SuspiciousTicket.Anomaly -eq " | SessionLogonTypeAnomaly ") #LogonType is a low indication..
+                            {
+                                Add-Member -InputObject $_ -MemberType NoteProperty -Name "Suspicious" -Value "Low" -Force
+                            }
+                        elseif ($SuspiciousTicket.Anomaly -like "*!Session<>Client Mismatch!*" -and $SuspiciousTicket.SessionUserName -eq "SYSTEM") #SessionUser as SYSTEM can be False Positive, so lower indication
+                            {
+                                Add-Member -InputObject $_ -MemberType NoteProperty -Name "Suspicious" -Value "Low" -Force
+                            }
+                        elseif ($SuspiciousTicket.Anomaly -like "*!Session<>Client Mismatch!*") #Strong indication
+                            {
+                                Add-Member -InputObject $_ -MemberType NoteProperty -Name "Suspicious" -Value "High" -Force
+                            }
+                        else
+                            {
+                                Add-Member -InputObject $_ -MemberType NoteProperty -Name "Suspicious" -Value "True" -Force
+                            }
+                        }
+            }
+
+        # Prepare suspicious tickets/anomalies report
+        $AnomaliesReportName = ".\GoldFinger-KerberosTicketsCheck-ANOMALIES-SUSPICIOUS_over_OFFLINE-ANALYSIS-Including-MultipleMatch-$(get-date -Format ddMMyyyyHHmmss).csv"
+        $SuspiciousTickets | Select-Object @{N='ComputerName';E={$_.ComputerName}},ClientName,Anomaly,Suspicious,SessionLogonServer,SessionKeyType,StartTime,EndTime,TimeDiffInHours,SessionUserName,SessionUserPrincipalName,TicketFlags,AltTargetDomainName,DomainName,EncodedTicket,EncodedTicketSize,KeyExpirationTime,RenewUntil,ServiceName,SessionAuthenticationPackage,SessionLogonType,SessionKey,SessionSid,SessionID,SessionLogonId,SessionLogonIdString,TargetDomainName,TimeSkew | Export-csv $AnomaliesReportName -NoTypeInformation;
+        $ComputerWithAnomolousTGT = $SuspiciousTickets.Computername | Select-Object -Unique;
+        
+        # Unify results of suspicious tickets
+        $SuspiciousTickets = $SuspiciousTickets | group SessionLogonID | ForEach-Object {$_.group | select -First 1}
+        Write-Verbose "Found $(($SuspiciousTickets | Measure-Object).count) potentially suspicious tickets (Unique count)";
+        #if ($LoggingLevel -eq 'Full') {Log-Entry -Message "$(Get-date): ! Found $(($SuspiciousTickets | Measure-Object).count) potentially suspicious tickets (Unique count) !"}
+
+        # Display Results
+        Write-Warning "Suspicious Kerberos Tickets Found! <$(($SuspiciousTickets | Measure-Object).count) Ticket(s)>"
+        
+        # display to console
+        $SuspiciousTickets | Select-Object @{N='ComputerName';E={$_.ComputerName}},Anomaly,ClientName,Suspicious,SessionLogonServer,SessionKeyType,StartTime,EndTime,TimeDiffInHours,SessionUserName,SessionUserPrincipalName,TicketFlags,AltTargetDomainName,DomainName,EncodedTicket,EncodedTicketSize,KeyExpirationTime,RenewUntil,ServiceName,SessionAuthenticationPackage,SessionLogonType,SessionKey,SessionSid,SessionID,SessionLogonId,SessionLogonIdString,TargetDomainName,TimeSkew
+        
+        # display in a grid
+        if (Test-Path "$PSHOME\powershell_ise.exe")
+            {
+                $SuspiciousTickets | Select-Object @{N='ComputerName';E={$_.ComputerName}},Anomaly,ClientName,Suspicious,SessionLogonServer,SessionKeyType,StartTime,EndTime,TimeDiffInHours,SessionUserName,SessionUserPrincipalName,TicketFlags,AltTargetDomainName,DomainName,EncodedTicket,EncodedTicketSize,KeyExpirationTime,RenewUntil,ServiceName,SessionAuthenticationPackage,SessionLogonType,SessionKey,SessionSid,SessionID,SessionLogonId,SessionLogonIdString,TargetDomainName,TimeSkew | Out-GridView -Title "Suspicious Kerberos Ticket(s)"
+            }
+                    
+        # display computers with anomolous TGTs
+        Write-Warning "$($ComputerWithAnomolousTGT.count) Computer(s) found with suspicious TGT(s) in memory:"
+        $ComputerWithAnomolousTGT | foreach {Write-Host $_ -ForegroundColor Red}
+
+        # Check if sessionSid does Not match Client name -> strong indication for suspicious TGT
+        Write-Host "";
+        $SuspiciousTickets | foreach {
+                $SuspiciousT = $_;
+                $Sid = $SuspiciousT.SessionSid
+            }
+        
+        $UserObj = [adsi]"LDAP://<SID=$sid>";
+        if ($SuspiciousT.ClientName -ne $UserObj.Properties.samaccountname) #Strong indication!
+            {
+                Write-Host "SessionSid Not matching ClientName (Name on TGT <> Primary process token owner):" -ForegroundColor Yellow;
+                $SuspiciousT | select @{N='ComputerName';E={$_.ComputerName}}, clientname, SessionUserName, suspicious | Format-Table -AutoSize -Wrap;
+                
+            }
+      }  
+    
+    else
+    {
+        Write-Host "[*] No suspicious entries found." -ForegroundColor Green;
+        #if ($LoggingLevel -eq 'Full') {Log-Entry -Message "$(Get-date): No suspicious entries found"}
+    }
+
+    # Save results to disk
+    if ($($FilteredTickets.Count) -gt 0)
+	    {
+		    $ReportName = ".\GoldFinger-KerberosTicketsCheck-Over_OFFLINE-ANALYSIS-Results-$(get-date -Format ddMMyyyyHHmmss).csv";
+		    $FilteredTickets | Select-Object @{N='ComputerName';E={$_.ComputerName}},ClientName,Suspicious,SessionLogonServer,SessionKeyType,StartTime,EndTime,TimeDiffInHours,SessionUserName,SessionUserPrincipalName,TicketFlags,AltTargetDomainName,DomainName,EncodedTicket,EncodedTicketSize,KeyExpirationTime,RenewUntil,ServiceName,SessionAuthenticationPackage,SessionLogonType,SessionKey,SessionSid,SessionID,SessionLogonId,SessionLogonIdString,TargetDomainName,TimeSkew | Export-csv $ReportName -NoTypeInformation
+            Write-Host "`n[*] All tickets report saved to $ReportName." -ForegroundColor Cyan;
+            #if ($LoggingLevel -eq 'Full') {Log-Entry -Message "$(Get-date): All tickets report saved to $ReportName"}
+	    }
+
+    if ($SuspiciousTickets)
+        {
+            Write-Host "[*] Anomalous-Only tickets report saved to $AnomaliesReportName`n<May Includes multiple anomolous rules matched for the same ticket(s)>." -ForegroundColor DarkYellow;
+            #if ($LoggingLevel -eq 'Full') {Log-Entry -Message "$(Get-date): Anomalous-Only tickets report saved to $AnomaliesReportName`n<May Includes multiple anomolous rules matched for the same ticket(s)>"}
+        }
+      
+      # Quit here if analizing a single offline dump file
+      exit 
+    } ## End of Offline Analysis (using TextFile provided)
+    
+    else
+        {
+            Write-Host "[!] file $TextFileToAnalyze was Not found. Quiting." -ForegroundColor Yellow;
+            exit
+        }
+}
+
+## Begin online (remote) analysis ## 
 # Check for Collector script in folder
-if (Test-Path .\GoldFinger-EndPointTicketCollector.ps1) {
+    if (Test-Path .\GoldFinger-EndPointTicketCollector.ps1) {
         Write-Host "[*] Collector script found in scripts folder." -ForegroundColor Green
     }
     else
@@ -302,12 +577,13 @@ function Set-PreviousString {
     $ErrorActionPreference = $global:CurrentEAP;
 }
 
-Write-Host "[*] Collection method: $CollectionMethod" -ForegroundColor Cyan;
-
-# Logging - kick off
-if ($LoggingLevel -eq 'Full')
-    {
-        Log-Entry -Message "$(Get-date): Collection method: $CollectionMethod";
+if ($TextFileToAnalyze -ne [system.string]::Empty) {
+        Write-Host "[*] Collection method: $CollectionMethod" -ForegroundColor Cyan
+        # Logging - kick off
+        if ($LoggingLevel -eq 'Full')
+            {
+                Log-Entry -Message "$(Get-date): Collection method: $CollectionMethod";
+            }
     }
 
 # Check if specific credentials where specified
@@ -321,13 +597,6 @@ else
         Write-Host "[*] Running as $([System.Environment]::UserDomainName)\$([System.Environment]::UserName) <Domain: $DomainDN>";
         if ($LoggingLevel -eq 'Full') {Log-Entry -Message "$(Get-date): Running as $([System.Environment]::UserDomainName)\$([System.Environment]::UserName) <Domain: $DomainDN>"}
     }
-
-# Get Kerberos TGT Ticket Age, and Ticket Renewal Age
-[int]$MaxTicketAge = (Get-Content "\\$($ENV:USERDNSDOMAIN)\SYSVOL\$($ENV:USERDNSDOMAIN)\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf" | Select-String MaxTicketAge).ToString().Split("=")[1].Trim()
-Write-Verbose "MaxTicketAge = $MaxTicketAge hours (taken from Default Domain Policy)"
-
-[int]$MaxRenewAge = (Get-Content "\\$($ENV:USERDNSDOMAIN)\SYSVOL\$($ENV:USERDNSDOMAIN)\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf" | Select-String MaxRenewAge).ToString().Split("=")[1].Trim()
-Write-Verbose "MaxRenewAge = $MaxRenewAge days (taken from Default Domain Policy)"
 
 # Create non-fixed size array for Computer List
 $ComputerList = New-Object System.Collections.ArrayList;

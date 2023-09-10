@@ -1,9 +1,9 @@
 ## GOLD FINGER - Suspicious TGT detector --> Ticket Collector Script (To Be Run locally on Remote EndPoints via WinRM/ws-man or PaExec/SMB) ##
-# NOTE: DO NOT RUN THIS SCRIPT. Run 'GoldFinger-Main.ps1' instead, with relevant parameters (if applicable), and keep this script available in the same folder.
+# IMPORTANT NOTE: Unless running locally to just dump tickets for later analysis,- do Not run this script directrly - instaed, please run 'GoldFinger-Main.ps1' with relevant parameters (if applicable), and keep this script available in the same folder.
 
 # Purpose: TGT monitor, research in progress, hunting for indicators of potential Golden Tickets/Pass-The-Hash on EndPoints in the domain.
 # Need to have either WinRM or SMB (PaExec method) open and enabled on EndPoints.
-# version: 1.0
+# version: 1.0.1
 # License: BSD 3-Clause
 # Original functions by Jared Atkinson (@jaredcatkinson) & Matthew Graeber (@mattifestation)
 # Modified by Yossi Sassi (@yossi_sassi)
