@@ -5,8 +5,8 @@ GoldFinger is a Suspicious TGT detector - focusing on <strong>Golden Tickets & p
 GoldFinger collects, analyzes & hunts for indicators of potential Golden Tickets & Pass-The-Hash on Domain-Joined EndPoints.</strong><BR>
 It is essentially built from a TGT Collector - collecting all Authentication Tickets from all Sessions on available Domain Endpoints, and then a main script that checks for a set of anomalies that indicate a suspicious manipulation.<BR>
 It has two collection methods - Either WinRM (default), or SMB (using PaExec, via the admin$ share). WinRM has an option to Enable WinRM remotely, as a separate parameter.<BR>
-Before running the tool, make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run this Script with or without relevant parameters.
-Requirements: The script needs to run as a user that has Local Admin permissions on all targetted EndPoints.
+Before running the tool, make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run this Script with or without relevant parameters.<BR>
+Requirements: The script needs to run as a user that has Local Admin permissions on all targetted EndPoints.<BR>
 <BR><B>It is HIGHLY recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines on EndPoints *BEFORE* running the main script, to allow smoother operations & avoid false detections as 'malicious'/HackTool.<BR>Common blocking of the tool would be a detection on the EndPoint of 'PowerView!ams!'. You'll need to add the exclusion of the script.</B>
 <h2 style="color: #2e6c80;">Short description</h2>
 Purpose: TGT collector|analyzer|hunting for indicators of potential Golden Tickets & Pass-The-Hash on EndPoints in the domain (research in progress).
@@ -14,6 +14,15 @@ Purpose: TGT collector|analyzer|hunting for indicators of potential Golden Ticke
 <BR>Instructions: Make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run .\GoldFinger-Main.ps1 Script.
 <BR>NOTE1: Run the script with a user that has Local Admin permissions on all targetted EndPoints.
 <BR>NOTE2: <strong>It is also HIGHLY recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines settings on the EndPoints *BEFORE* running the main script</strong>, to allow smoother operations & avoid false detections as 'malicious'/HackTool.
+<BR><BR>
+You can also run the GoldFinger-EndPointTicketCollector.ps1 script locally on a system, redirect its output to a text file, and separately analyze the output using this script, using -TextFileToAnalyze option, providing the full path to a text file containing re-directed output from the EndPoint-Collector script.<BR>
+e.g. <BR>
+On the suspicious system, run:<BR>
+.\GoldFinger-EndPointTicketCollector.ps1 > c:\temp\tickets.txt<BR>
+and then, from your host, run the main script using the parameter to analize offline:<BR>
+.\GoldFinger-Main.ps1 -TextFileToAnalyze c:\temp\tickets.txt 
+<BR>
+
 <h2 style="color: #2e6c80;">Parameters</h2>
 .PARAMETER CollectionMethod<BR>
 The protocol/service used to collect the tickets from the domain-joined endpoint. Default is WinRM (PSRemoting).<BR>
@@ -49,6 +58,9 @@ Targets a specific computer(s). By default, the tool targets ALL enabled & acces
 .PARAMETER ExcludedComputerName<BR>
 Excludes a specific computer(s) from the domain, and not targeting/collecting tickets from those computers. useful to "skip" certain servers that may produce a heavy workload or false positive (e.g. Management Servers that might perform multiple TGT operations as part of how they work).<BR>
 Note that by default, the script skips domain controllers (Not relevant for these checks) and SCCM Servers.<BR>
+<BR>
+.PARAMETER TextFileToAnalyze<BR>
+The full path to a text file containing re-directed output from the EndPointCollector script.<BR>
 <BR>
 .PARAMETER LoggingLevel<BR>
 The level of logging requested. <BR>
@@ -91,6 +103,9 @@ Runs the tool using WinRM on workstations only (Client OS), while excluding/skip
 <BR>
 .\GoldFinger-Main.ps1 -WorkstationsOnly -ExcludedComputerName $ExcludedComputers<BR>
 Runs the tool using WinRM on workstations only (Client OS), while excluding/skipping a specific list of hosts, previously saved into a variable named $ExcludedComputers<BR>
+<BR>
+.\GoldFinger-Main.ps1 -TextFileToAnalyze c:\temp\tickets.txt<BR>
+Analyzes the input text file containing re-directed result from the EndPoint-Collector script.<BR>
 <hr />
 Reserach & code by 1nTh35h311 (<a title="@yossi_sassi" href="https://twitter.com/yossi_sassi" target="_blank">@yossi_sassi</a>), 10root Cyber Security
 <h4 style="color: #2e6c80;"><span style="color: #333399;">
