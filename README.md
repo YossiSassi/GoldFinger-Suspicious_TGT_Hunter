@@ -4,7 +4,7 @@
 GoldFinger is a Suspicious TGT detector - focusing on <strong>Golden Tickets & potential Pass-The-Hash attempts.<BR>
 GoldFinger collects, analyzes & hunts for indicators of potential Golden Tickets & Pass-The-Hash on Domain-Joined EndPoints.</strong><BR>
 It is essentially built from a TGT Collector - collecting all Authentication Tickets from all Sessions on available Domain Endpoints, and then a main script that checks for a set of anomalies that indicate a suspicious manipulation.<BR>
-It has two collection methods - Either WinRM (default), or SMB (using PaExec, via the admin$ share). WinRM has an option to Enable WinRM remotely, as a separate parameter.<BR>
+It has two collection methods - Either WinRM (default), or SMB (via the admin$ share using PaExec, an open source 'psExec-like' https://github.com/poweradminllc/PAExec). WinRM has an option to Enable WinRM remotely, as a separate parameter.<BR>
 Before running the tool, make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run this Script with or without relevant parameters.<BR>
 Requirements: The script needs to run as a user that has Local Admin permissions on all targetted EndPoints.<BR>
 <BR><B>It is HIGHLY recommended to exclude the file 'GoldFinger-EndPointTicketCollector.ps1', as well as the PaExec known open source executable (if SMB will be used) from AV/EDR engines on EndPoints *BEFORE* running the main script, to allow smoother operations & avoid blocking and/or false detections as 'malicious'/HackTool.<BR>Common blocking of the tool would be a detection on the EndPoint of 'PowerView!ams!'. You'll need to add the exclusion of the script.</B><br><br>
