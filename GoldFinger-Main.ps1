@@ -23,7 +23,13 @@ It is essentially a TGT Collector - collecting all Authentication Tickets from a
 It has two collection methods - Either WinRM (default), or SMB (using PaExec, via the admin$ share). WinRM has an option to Enable WinRM remotely, as a separate parameter.
 Before running the tool, make sure the other script ('GoldFinger-EndPointTicketCollector.ps1') is available in the same folder, and then Run this Script with or without relevant parameters.
 Requirements: The script needs to run as a user that has Local Admin permissions on all targetted EndPoints.
-It is also HIGHLY recommended to "whitelist"/exclude the file 'GoldFinger-EndPointTicketCollector.ps1' from AV/EDR engines settings on the EndPoints *BEFORE* running the main script, to allow smoother operations & avoid false detections as 'malicious'/HackTool.
+
+It is HIGHLY recommended to exclude the file 'GoldFinger-EndPointTicketCollector.ps1', as well as the PaExec known open source executable (if SMB will be used) from AV/EDR engines on EndPoints *BEFORE* running the main script, to allow smoother operations & avoid blocking and/or false detections as 'malicious'/HackTool.
+Common blocking of the tool would be a detection on the EndPoint of 'PowerView!ams!'. You'll need to add the exclusion of the script.
+You can ensure exclusion of both PaExec binary and Goldfinger-EndPointCollector.ps1 by using the following hashes, on any EPP (e.g. Av/EDR):
+'paExec.exe' SHA256: AB50D8D707B97712178A92BBAC74CCC2A5699EB41C17AA77F713FF3E568DCEDB , MD5: B1DFB4F9EB3E598D1892A3BD3A92F079
+'GoldFinger-EndPointTicketCollector.ps1' SHA256: CC437D7CB87DAC52BD03A6F1385EED6BB673445E4DAA4ACB6AE6508A098D372C, MD5: 92FD323A69877DFFC2C5136B457CCCF4
+
 You can also run the GoldFinger-EndPointTicketCollector.ps1 script locally on a system, redirect its output to a text file, and separately analyze the output using this script, using -TextFileToAnalyze option, providing the full path to a text file containing re-directed output from the EndPoint-Collector script.
 
 .PARAMETER CollectionMethod
